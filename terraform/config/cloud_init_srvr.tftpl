@@ -6043,7 +6043,7 @@ write_files:
                         # workload profiles or VPA-excluded containers.
                         controlledValues: "RequestsOnly"
                         minAllowed:
-                          cpu: "50m"
+                          cpu: "25m"
                           memory: "256Mi"
                         maxAllowed:
                           cpu: "4"
@@ -6105,7 +6105,67 @@ write_files:
                         # workload profiles or VPA-excluded containers.
                         controlledValues: "RequestsOnly"
                         minAllowed:
-                          cpu: "50m"
+                          cpu: "25m"
+                          memory: "256Mi"
+                        maxAllowed:
+                          cpu: "4"
+                          memory: "12Gi"
+            skipBackgroundRequests: false
+          - name: generate-vpa-for-daemonsets
+            match:
+              resources:
+                kinds:
+                  - DaemonSet
+                namespaceSelector:
+                  matchLabels:
+                    platform.suncoast.systems/autosize: "enabled"
+            exclude:
+              any:
+                - resources:
+                    selector:
+                      matchLabels:
+                        platform.suncoast.systems/vpa-exclude: "true"
+                - resources:
+                    namespaceSelector:
+                      matchLabels:
+                        platform.suncoast.systems/vpa-exclude: "true"
+                - resources:
+                    namespaceSelector:
+                      matchLabels:
+                        kubernetes.io/metadata.name: kyverno
+            generate:
+              apiVersion: autoscaling.k8s.io/v1
+              kind: VerticalPodAutoscaler
+              name: "goldilocks-{{request.object.metadata.name}}"
+              namespace: "{{request.object.metadata.namespace}}"
+              synchronize: true
+              generateExisting: true
+              data:
+                metadata:
+                  labels:
+                    app.kubernetes.io/managed-by: kyverno
+                spec:
+                  targetRef:
+                    apiVersion: apps/v1
+                    kind: DaemonSet
+                    name: "{{request.object.metadata.name}}"
+                  updatePolicy:
+                    updateMode: "InPlaceOrRecreate"
+                    minReplicas: 1
+                  resourcePolicy:
+                    containerPolicies:
+                      - containerName: "linkerd-proxy"
+                        mode: "Off"
+                      - containerName: "vault-agent"
+                        mode: "Off"
+                      - containerName: "config-reloader"
+                        mode: "Off"
+                      - containerName: "*"
+                        # Let VPA manage DaemonSet main containers while keeping
+                        # injected or reload sidecars pinned to explicit profiles.
+                        controlledValues: "RequestsOnly"
+                        minAllowed:
+                          cpu: "25m"
                           memory: "256Mi"
                         maxAllowed:
                           cpu: "4"
@@ -6121,7 +6181,7 @@ write_files:
           policies.kyverno.io/title: Autosize workloads must have VPA
           policies.kyverno.io/category: Autosize
           policies.kyverno.io/severity: medium
-          policies.kyverno.io/subject: Deployment,StatefulSet
+          policies.kyverno.io/subject: Deployment,StatefulSet,DaemonSet
       spec:
         validationFailureAction: Audit
         background: true
@@ -6132,6 +6192,7 @@ write_files:
                 kinds:
                   - Deployment
                   - StatefulSet
+                  - DaemonSet
                 namespaceSelector:
                   matchLabels:
                     platform.suncoast.systems/autosize: "enabled"
@@ -6172,7 +6233,7 @@ write_files:
           policies.kyverno.io/title: VPA-managed containers should not set explicit resources
           policies.kyverno.io/category: Autosize
           policies.kyverno.io/severity: medium
-          policies.kyverno.io/subject: Deployment,StatefulSet
+          policies.kyverno.io/subject: Deployment,StatefulSet,DaemonSet
       spec:
         validationFailureAction: Audit
         background: true
@@ -6206,6 +6267,36 @@ write_files:
                 conditions:
                   any:
                     - key: "{{ request.object.spec.template.spec.containers[?name != 'linkerd-proxy' && name != 'vault-agent' && name != 'config-reloader' && name != 'alloy' && (resources.requests.cpu || resources.requests.memory || resources.limits.cpu || resources.limits.memory)] | length(@) }}"
+                      operator: GreaterThan
+                      value: 0
+          - name: no-explicit-resources-daemonsets
+            match:
+              resources:
+                kinds:
+                  - DaemonSet
+                namespaceSelector:
+                  matchLabels:
+                    platform.suncoast.systems/autosize: "enabled"
+            exclude:
+              any:
+                - resources:
+                    selector:
+                      matchLabels:
+                        platform.suncoast.systems/vpa-exclude: "true"
+                - resources:
+                    namespaceSelector:
+                      matchLabels:
+                        platform.suncoast.systems/vpa-exclude: "true"
+                - resources:
+                    namespaceSelector:
+                      matchLabels:
+                        kubernetes.io/metadata.name: kyverno
+            validate:
+              message: "Explicit CPU/memory requests/limits should be removed from VPA-managed DaemonSet containers; VPA-excluded sidecars keep manual resources."
+              deny:
+                conditions:
+                  any:
+                    - key: "{{ request.object.spec.template.spec.containers[?name != 'linkerd-proxy' && name != 'vault-agent' && name != 'config-reloader' && (resources.requests.cpu || resources.requests.memory || resources.limits.cpu || resources.limits.memory)] | length(@) }}"
                       operator: GreaterThan
                       value: 0
       
@@ -9029,6 +9120,456 @@ write_files:
           - group: policy.linkerd.io
             kind: MeshTLSAuthentication
             name: otel-collector-mtls
+      ---
+      # Manifest-managed VPAs for telemetry namespaces that are excluded from
+      # namespace-wide Kyverno generation.
+      apiVersion: autoscaling.k8s.io/v1
+      kind: VerticalPodAutoscaler
+      metadata:
+        name: goldilocks-otel-collector
+        namespace: observability
+        labels:
+          app.kubernetes.io/managed-by: manifest
+      spec:
+        targetRef:
+          apiVersion: apps/v1
+          kind: Deployment
+          name: otel-collector
+        updatePolicy:
+          updateMode: "InPlaceOrRecreate"
+          minReplicas: 1
+        resourcePolicy:
+          containerPolicies:
+            - containerName: "linkerd-proxy"
+              mode: "Off"
+            - containerName: "vault-agent"
+              mode: "Off"
+            - containerName: "config-reloader"
+              mode: "Off"
+            - containerName: "*"
+              controlledValues: "RequestsOnly"
+              minAllowed:
+                cpu: "25m"
+                memory: "256Mi"
+              maxAllowed:
+                cpu: "4"
+                memory: "12Gi"
+      ---
+      apiVersion: autoscaling.k8s.io/v1
+      kind: VerticalPodAutoscaler
+      metadata:
+        name: goldilocks-otel-collector-k8s-gateway
+        namespace: observability
+        labels:
+          app.kubernetes.io/managed-by: manifest
+      spec:
+        targetRef:
+          apiVersion: apps/v1
+          kind: Deployment
+          name: otel-collector-k8s-gateway
+        updatePolicy:
+          updateMode: "InPlaceOrRecreate"
+          minReplicas: 1
+        resourcePolicy:
+          containerPolicies:
+            - containerName: "linkerd-proxy"
+              mode: "Off"
+            - containerName: "vault-agent"
+              mode: "Off"
+            - containerName: "config-reloader"
+              mode: "Off"
+            - containerName: "*"
+              controlledValues: "RequestsOnly"
+              minAllowed:
+                cpu: "25m"
+                memory: "256Mi"
+              maxAllowed:
+                cpu: "4"
+                memory: "12Gi"
+      ---
+      apiVersion: autoscaling.k8s.io/v1
+      kind: VerticalPodAutoscaler
+      metadata:
+        name: goldilocks-otel-collector-k8s-agent
+        namespace: observability
+        labels:
+          app.kubernetes.io/managed-by: manifest
+      spec:
+        targetRef:
+          apiVersion: apps/v1
+          kind: DaemonSet
+          name: otel-collector-k8s-agent
+        updatePolicy:
+          updateMode: "InPlaceOrRecreate"
+          minReplicas: 1
+        resourcePolicy:
+          containerPolicies:
+            - containerName: "linkerd-proxy"
+              mode: "Off"
+            - containerName: "vault-agent"
+              mode: "Off"
+            - containerName: "config-reloader"
+              mode: "Off"
+            - containerName: "*"
+              controlledValues: "RequestsOnly"
+              minAllowed:
+                cpu: "25m"
+                memory: "256Mi"
+              maxAllowed:
+                cpu: "4"
+                memory: "12Gi"
+      ---
+      apiVersion: autoscaling.k8s.io/v1
+      kind: VerticalPodAutoscaler
+      metadata:
+        name: goldilocks-openobserve-router
+        namespace: openobserve
+        labels:
+          app.kubernetes.io/managed-by: manifest
+      spec:
+        targetRef:
+          apiVersion: apps/v1
+          kind: Deployment
+          name: openobserve-router
+        updatePolicy:
+          updateMode: "InPlaceOrRecreate"
+          minReplicas: 1
+        resourcePolicy:
+          containerPolicies:
+            - containerName: "linkerd-proxy"
+              mode: "Off"
+            - containerName: "vault-agent"
+              mode: "Off"
+            - containerName: "config-reloader"
+              mode: "Off"
+            - containerName: "*"
+              controlledValues: "RequestsOnly"
+              minAllowed:
+                cpu: "25m"
+                memory: "256Mi"
+              maxAllowed:
+                cpu: "4"
+                memory: "12Gi"
+      ---
+      apiVersion: autoscaling.k8s.io/v1
+      kind: VerticalPodAutoscaler
+      metadata:
+        name: goldilocks-openobserve-compactor
+        namespace: openobserve
+        labels:
+          app.kubernetes.io/managed-by: manifest
+      spec:
+        targetRef:
+          apiVersion: apps/v1
+          kind: Deployment
+          name: openobserve-compactor
+        updatePolicy:
+          updateMode: "InPlaceOrRecreate"
+          minReplicas: 1
+        resourcePolicy:
+          containerPolicies:
+            - containerName: "linkerd-proxy"
+              mode: "Off"
+            - containerName: "vault-agent"
+              mode: "Off"
+            - containerName: "config-reloader"
+              mode: "Off"
+            - containerName: "*"
+              controlledValues: "RequestsOnly"
+              minAllowed:
+                cpu: "25m"
+                memory: "256Mi"
+              maxAllowed:
+                cpu: "4"
+                memory: "12Gi"
+      ---
+      apiVersion: autoscaling.k8s.io/v1
+      kind: VerticalPodAutoscaler
+      metadata:
+        name: goldilocks-openobserve-ingester
+        namespace: openobserve
+        labels:
+          app.kubernetes.io/managed-by: manifest
+      spec:
+        targetRef:
+          apiVersion: apps/v1
+          kind: StatefulSet
+          name: openobserve-ingester
+        updatePolicy:
+          updateMode: "InPlaceOrRecreate"
+          minReplicas: 1
+        resourcePolicy:
+          containerPolicies:
+            - containerName: "linkerd-proxy"
+              mode: "Off"
+            - containerName: "vault-agent"
+              mode: "Off"
+            - containerName: "config-reloader"
+              mode: "Off"
+            - containerName: "*"
+              controlledValues: "RequestsOnly"
+              minAllowed:
+                cpu: "25m"
+                memory: "256Mi"
+              maxAllowed:
+                cpu: "4"
+                memory: "12Gi"
+      ---
+      apiVersion: autoscaling.k8s.io/v1
+      kind: VerticalPodAutoscaler
+      metadata:
+        name: goldilocks-openobserve-querier
+        namespace: openobserve
+        labels:
+          app.kubernetes.io/managed-by: manifest
+      spec:
+        targetRef:
+          apiVersion: apps/v1
+          kind: StatefulSet
+          name: openobserve-querier
+        updatePolicy:
+          updateMode: "InPlaceOrRecreate"
+          minReplicas: 1
+        resourcePolicy:
+          containerPolicies:
+            - containerName: "linkerd-proxy"
+              mode: "Off"
+            - containerName: "vault-agent"
+              mode: "Off"
+            - containerName: "config-reloader"
+              mode: "Off"
+            - containerName: "*"
+              controlledValues: "RequestsOnly"
+              minAllowed:
+                cpu: "25m"
+                memory: "256Mi"
+              maxAllowed:
+                cpu: "4"
+                memory: "12Gi"
+      ---
+      apiVersion: autoscaling.k8s.io/v1
+      kind: VerticalPodAutoscaler
+      metadata:
+        name: goldilocks-openobserve-scheduler
+        namespace: openobserve
+        labels:
+          app.kubernetes.io/managed-by: manifest
+      spec:
+        targetRef:
+          apiVersion: apps/v1
+          kind: StatefulSet
+          name: openobserve-scheduler
+        updatePolicy:
+          updateMode: "InPlaceOrRecreate"
+          minReplicas: 1
+        resourcePolicy:
+          containerPolicies:
+            - containerName: "linkerd-proxy"
+              mode: "Off"
+            - containerName: "vault-agent"
+              mode: "Off"
+            - containerName: "config-reloader"
+              mode: "Off"
+            - containerName: "*"
+              controlledValues: "RequestsOnly"
+              minAllowed:
+                cpu: "25m"
+                memory: "256Mi"
+              maxAllowed:
+                cpu: "4"
+                memory: "12Gi"
+      ---
+      apiVersion: autoscaling.k8s.io/v1
+      kind: VerticalPodAutoscaler
+      metadata:
+        name: goldilocks-openobserve-dex
+        namespace: openobserve
+        labels:
+          app.kubernetes.io/managed-by: manifest
+      spec:
+        targetRef:
+          apiVersion: apps/v1
+          kind: Deployment
+          name: openobserve-dex
+        updatePolicy:
+          updateMode: "InPlaceOrRecreate"
+          minReplicas: 1
+        resourcePolicy:
+          containerPolicies:
+            - containerName: "linkerd-proxy"
+              mode: "Off"
+            - containerName: "vault-agent"
+              mode: "Off"
+            - containerName: "config-reloader"
+              mode: "Off"
+            - containerName: "*"
+              controlledValues: "RequestsOnly"
+              minAllowed:
+                cpu: "25m"
+                memory: "256Mi"
+              maxAllowed:
+                cpu: "4"
+                memory: "12Gi"
+      ---
+      apiVersion: autoscaling.k8s.io/v1
+      kind: VerticalPodAutoscaler
+      metadata:
+        name: goldilocks-oo-auth-bridge
+        namespace: openobserve
+        labels:
+          app.kubernetes.io/managed-by: manifest
+      spec:
+        targetRef:
+          apiVersion: apps/v1
+          kind: Deployment
+          name: oo-auth-bridge
+        updatePolicy:
+          updateMode: "InPlaceOrRecreate"
+          minReplicas: 1
+        resourcePolicy:
+          containerPolicies:
+            - containerName: "linkerd-proxy"
+              mode: "Off"
+            - containerName: "vault-agent"
+              mode: "Off"
+            - containerName: "config-reloader"
+              mode: "Off"
+            - containerName: "*"
+              controlledValues: "RequestsOnly"
+              minAllowed:
+                cpu: "25m"
+                memory: "256Mi"
+              maxAllowed:
+                cpu: "4"
+                memory: "12Gi"
+      ---
+      apiVersion: autoscaling.k8s.io/v1
+      kind: VerticalPodAutoscaler
+      metadata:
+        name: goldilocks-oo-oauth2-proxy
+        namespace: openobserve
+        labels:
+          app.kubernetes.io/managed-by: manifest
+      spec:
+        targetRef:
+          apiVersion: apps/v1
+          kind: Deployment
+          name: oo-oauth2-proxy
+        updatePolicy:
+          updateMode: "InPlaceOrRecreate"
+          minReplicas: 1
+        resourcePolicy:
+          containerPolicies:
+            - containerName: "linkerd-proxy"
+              mode: "Off"
+            - containerName: "vault-agent"
+              mode: "Off"
+            - containerName: "config-reloader"
+              mode: "Off"
+            - containerName: "*"
+              controlledValues: "RequestsOnly"
+              minAllowed:
+                cpu: "25m"
+                memory: "256Mi"
+              maxAllowed:
+                cpu: "4"
+                memory: "12Gi"
+      ---
+      apiVersion: autoscaling.k8s.io/v1
+      kind: VerticalPodAutoscaler
+      metadata:
+        name: goldilocks-openobserve-auth-proxy
+        namespace: openobserve
+        labels:
+          app.kubernetes.io/managed-by: manifest
+      spec:
+        targetRef:
+          apiVersion: apps/v1
+          kind: Deployment
+          name: openobserve-auth-proxy
+        updatePolicy:
+          updateMode: "InPlaceOrRecreate"
+          minReplicas: 1
+        resourcePolicy:
+          containerPolicies:
+            - containerName: "linkerd-proxy"
+              mode: "Off"
+            - containerName: "vault-agent"
+              mode: "Off"
+            - containerName: "config-reloader"
+              mode: "Off"
+            - containerName: "*"
+              controlledValues: "RequestsOnly"
+              minAllowed:
+                cpu: "25m"
+                memory: "256Mi"
+              maxAllowed:
+                cpu: "4"
+                memory: "12Gi"
+      ---
+      apiVersion: autoscaling.k8s.io/v1
+      kind: VerticalPodAutoscaler
+      metadata:
+        name: goldilocks-openobserve-rum-proxy
+        namespace: openobserve
+        labels:
+          app.kubernetes.io/managed-by: manifest
+      spec:
+        targetRef:
+          apiVersion: apps/v1
+          kind: Deployment
+          name: openobserve-rum-proxy
+        updatePolicy:
+          updateMode: "InPlaceOrRecreate"
+          minReplicas: 1
+        resourcePolicy:
+          containerPolicies:
+            - containerName: "linkerd-proxy"
+              mode: "Off"
+            - containerName: "vault-agent"
+              mode: "Off"
+            - containerName: "config-reloader"
+              mode: "Off"
+            - containerName: "*"
+              controlledValues: "RequestsOnly"
+              minAllowed:
+                cpu: "25m"
+                memory: "256Mi"
+              maxAllowed:
+                cpu: "4"
+                memory: "12Gi"
+      ---
+      apiVersion: autoscaling.k8s.io/v1
+      kind: VerticalPodAutoscaler
+      metadata:
+        name: goldilocks-cloudflared
+        namespace: openobserve
+        labels:
+          app.kubernetes.io/managed-by: manifest
+      spec:
+        targetRef:
+          apiVersion: apps/v1
+          kind: Deployment
+          name: cloudflared
+        updatePolicy:
+          updateMode: "InPlaceOrRecreate"
+          minReplicas: 1
+        resourcePolicy:
+          containerPolicies:
+            - containerName: "linkerd-proxy"
+              mode: "Off"
+            - containerName: "vault-agent"
+              mode: "Off"
+            - containerName: "config-reloader"
+              mode: "Off"
+            - containerName: "*"
+              controlledValues: "RequestsOnly"
+              minAllowed:
+                cpu: "25m"
+                memory: "256Mi"
+              maxAllowed:
+                cpu: "4"
+                memory: "12Gi"
       EOF
 
       sudo kubectl --kubeconfig=/etc/rancher/rke2/rke2.yaml -n openobserve apply -f /root/oo-auth-proxy.yaml
