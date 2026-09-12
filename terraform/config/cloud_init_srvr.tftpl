@@ -8200,6 +8200,19 @@ write_files:
             identities:
               - "*"
       ---
+      # Linkerd proxy trace exporters use TLS to the collector without a source client identity.
+      apiVersion: policy.linkerd.io/v1beta1
+      kind: ServerAuthorization
+      metadata:
+        name: allow-proxy-tracing-tls-to-otel
+        namespace: observability
+      spec:
+        server:
+          name: otlp-grpc
+        client:
+          meshTLS:
+            unauthenticatedTLS: true
+      ---
       apiVersion: policy.linkerd.io/v1beta1
       kind: ServerAuthorization
       metadata:
