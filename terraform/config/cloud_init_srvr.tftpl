@@ -2071,9 +2071,10 @@ write_files:
       sudo kubectl --kubeconfig=/etc/rancher/rke2/rke2.yaml label node ctrl-node dedicated=ctrl-node system=true --overwrite
       sudo kubectl --kubeconfig=/etc/rancher/rke2/rke2.yaml label node work-node-l4-gpu node.longhorn.io/create-default-disk=true --overwrite
       sudo kubectl --kubeconfig=/etc/rancher/rke2/rke2.yaml label node work-node-t4-gpu node.longhorn.io/create-default-disk=true --overwrite
-      sudo kubectl --kubeconfig=/etc/rancher/rke2/rke2.yaml label node srvr-node node.longhorn.io/create-default-disk=false --overwrite
-      sudo kubectl --kubeconfig=/etc/rancher/rke2/rke2.yaml label node etcd-node node.longhorn.io/create-default-disk=false --overwrite
-      sudo kubectl --kubeconfig=/etc/rancher/rke2/rke2.yaml label node ctrl-node node.longhorn.io/create-default-disk=false --overwrite
+      # Longhorn only recognizes the positive true selector; keep control-plane nodes unlabeled.
+      sudo kubectl --kubeconfig=/etc/rancher/rke2/rke2.yaml label node srvr-node node.longhorn.io/create-default-disk- || true
+      sudo kubectl --kubeconfig=/etc/rancher/rke2/rke2.yaml label node etcd-node node.longhorn.io/create-default-disk- || true
+      sudo kubectl --kubeconfig=/etc/rancher/rke2/rke2.yaml label node ctrl-node node.longhorn.io/create-default-disk- || true
 
   - path: /etc/systemd/system/bootstrap-rke2.service
     permissions: '0644'
@@ -6458,8 +6459,8 @@ write_files:
         --set proxy.tracing.enabled=true \
         --set-string proxy.tracing.otlp.endpoint="otel-collector.observability.svc.cluster.local:4317" \
         --set-string proxy.tracing.collector.endpoint="otel-collector.observability.svc.cluster.local:4317" \
-        --set-string proxy.tracing.collector.meshIdentity.serviceAccountName="linkerd-jaeger" \
-        --set-string proxy.tracing.collector.meshIdentity.namespace="linkerd-jaeger" \
+        --set-string proxy.tracing.collector.meshIdentity.serviceAccountName="otel-collector" \
+        --set-string proxy.tracing.collector.meshIdentity.namespace="observability" \
         --set-string proxy.telemetry.spans.enabled=true \
         --set proxy.tracing.otlp.insecure=true \
         --set-string proxy.telemetry.spans.level=trace \
@@ -6813,6 +6814,7 @@ write_files:
 
       echo "📦 Installing CloudNativePG operator (for OpenObserve metadata store)..."
       sudo kubectl --kubeconfig=/etc/rancher/rke2/rke2.yaml apply --server-side -f https://raw.githubusercontent.com/cloudnative-pg/cloudnative-pg/release-1.22/releases/cnpg-1.22.1.yaml
+      sudo kubectl --kubeconfig=/etc/rancher/rke2/rke2.yaml -n cnpg-system patch deployment cnpg-controller-manager --type=strategic -p '{"spec":{"template":{"spec":{"containers":[{"name":"manager","readinessProbe":{"timeoutSeconds":5,"failureThreshold":6},"livenessProbe":{"timeoutSeconds":5,"failureThreshold":6}}]}}}}' || true
       sudo kubectl --kubeconfig=/etc/rancher/rke2/rke2.yaml -n cnpg-system rollout status deploy/cnpg-controller-manager --timeout=300s
       sudo kubectl --kubeconfig=/etc/rancher/rke2/rke2.yaml -n cnpg-system wait --for=condition=Available deploy/cnpg-controller-manager --timeout=60s
 
@@ -6880,6 +6882,7 @@ write_files:
         --set-string config.ZO_META_STORE=postgres \
         --set-string config.ZO_META_CONNECTION_POOL_MIN_SIZE=1 \
         --set-string config.ZO_META_CONNECTION_POOL_MAX_SIZE=20 \
+        --set-string config.ZO_NATS_V211_SUPPORT=true \
         --set-string extraEnv[0].name=ZO_META_CONNECTION_POOL_MIN_SIZE \
         --set-string extraEnv[0].value=1 \
         --set-string extraEnv[1].name=ZO_META_CONNECTION_POOL_MAX_SIZE \
@@ -7599,6 +7602,7 @@ write_files:
         --set-string podSecurityContext.fsGroupChangePolicy=OnRootMismatch \
         --set-string config.ZO_META_CONNECTION_POOL_MIN_SIZE=1 \
         --set-string config.ZO_META_CONNECTION_POOL_MAX_SIZE=20 \
+        --set-string config.ZO_NATS_V211_SUPPORT=true \
         --set-string extraEnv[0].name=ZO_META_CONNECTION_POOL_MIN_SIZE \
         --set-string extraEnv[0].value=1 \
         --set-string extraEnv[1].name=ZO_META_CONNECTION_POOL_MAX_SIZE \
@@ -7633,6 +7637,7 @@ write_files:
         --set-string podSecurityContext.fsGroupChangePolicy=OnRootMismatch \
         --set-string config.ZO_META_CONNECTION_POOL_MIN_SIZE=1 \
         --set-string config.ZO_META_CONNECTION_POOL_MAX_SIZE=20 \
+        --set-string config.ZO_NATS_V211_SUPPORT=true \
         --set-string extraEnv[0].name=ZO_META_CONNECTION_POOL_MIN_SIZE \
         --set-string extraEnv[0].value=1 \
         --set-string extraEnv[1].name=ZO_META_CONNECTION_POOL_MAX_SIZE \
@@ -11550,6 +11555,12 @@ write_files:
               limits:
                 cpu: "2"
                 memory: 2Gi
+            readinessProbe:
+              timeoutSeconds: 5
+              failureThreshold: 6
+            livenessProbe:
+              timeoutSeconds: 5
+              failureThreshold: 6
 
             # 6) Vault-plugin ENV configuration
             env:
