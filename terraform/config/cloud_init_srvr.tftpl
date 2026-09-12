@@ -6868,9 +6868,9 @@ write_files:
         --set minio.buckets[0].purge=false \
         --set-string auth.ZO_ROOT_USER_EMAIL="$OPENOBSERVE_USERNAME" \
         --set-string auth.ZO_ROOT_USER_PASSWORD="$OPENOBSERVE_PASSWORD" \
-        --set-string auth.ZO_META_POSTGRES_DSN="postgres://openobserve:$OPENOBSERVE_PG_PASSWORD@openobserve-postgres-rw.openobserve.svc.cluster.local:5432/app?sslmode=disable" \
-        --set-string auth.ZO_META_POSTGRES_RO_DSN="postgres://openobserve:$OPENOBSERVE_PG_PASSWORD@openobserve-postgres-rw.openobserve.svc.cluster.local:5432/app?sslmode=disable" \
-        --set-string auth.ZO_META_DDL_DSN="postgres://openobserve:$OPENOBSERVE_PG_PASSWORD@openobserve-postgres-rw.openobserve.svc.cluster.local:5432/app?sslmode=disable" \
+        --set-string auth.ZO_META_POSTGRES_DSN="postgres://app:$OPENOBSERVE_PG_PASSWORD@openobserve-postgres-rw.openobserve.svc.cluster.local:5432/app?sslmode=disable" \
+        --set-string auth.ZO_META_POSTGRES_RO_DSN="postgres://app:$OPENOBSERVE_PG_PASSWORD@openobserve-postgres-rw.openobserve.svc.cluster.local:5432/app?sslmode=disable" \
+        --set-string auth.ZO_META_DDL_DSN="postgres://app:$OPENOBSERVE_PG_PASSWORD@openobserve-postgres-rw.openobserve.svc.cluster.local:5432/app?sslmode=disable" \
         --set-string postgres.spec.password="$OPENOBSERVE_PG_PASSWORD" \
         --set postgres.spec.instances=1 \
         --set-string postgres.spec.storage.size=10Gi \
@@ -6880,25 +6880,25 @@ write_files:
         --set-string config.ZO_IGNORE_FILE_RETENTION_BY_STREAM="true" \
         --set-string config.ZO_S3_BUCKET_NAME=openobserve \
         --set-string config.ZO_META_STORE=postgres \
-        --set-string config.ZO_META_CONNECTION_POOL_MIN_SIZE=1 \
-        --set-string config.ZO_META_CONNECTION_POOL_MAX_SIZE=20 \
+        --set-string config.ZO_META_CONNECTION_POOL_MIN_SIZE=5 \
+        --set-string config.ZO_META_CONNECTION_POOL_MAX_SIZE=50 \
         --set-string config.ZO_NATS_V211_SUPPORT=true \
         --set-string extraEnv[0].name=ZO_META_CONNECTION_POOL_MIN_SIZE \
-        --set-string extraEnv[0].value=1 \
+        --set-string extraEnv[0].value=5 \
         --set-string extraEnv[1].name=ZO_META_CONNECTION_POOL_MAX_SIZE \
-        --set-string extraEnv[1].value=20 \
+        --set-string extraEnv[1].value=50 \
         --set-string config.ZO_META_TRANSACTION_LOCK_TIMEOUT=1800 \
         --set-string config.ZO_META_TRANSACTION_RETRIES=10 \
-        --set-string router.config.ZO_META_CONNECTION_POOL_MIN_SIZE=1 \
-        --set-string router.config.ZO_META_CONNECTION_POOL_MAX_SIZE=20 \
-        --set-string ingester.config.ZO_META_CONNECTION_POOL_MIN_SIZE=1 \
-        --set-string ingester.config.ZO_META_CONNECTION_POOL_MAX_SIZE=20 \
-        --set-string querier.config.ZO_META_CONNECTION_POOL_MIN_SIZE=1 \
-        --set-string querier.config.ZO_META_CONNECTION_POOL_MAX_SIZE=20 \
-        --set-string compactor.config.ZO_META_CONNECTION_POOL_MIN_SIZE=1 \
-        --set-string compactor.config.ZO_META_CONNECTION_POOL_MAX_SIZE=20 \
-        --set-string alertmanager.config.ZO_META_CONNECTION_POOL_MIN_SIZE=1 \
-        --set-string alertmanager.config.ZO_META_CONNECTION_POOL_MAX_SIZE=20 \
+        --set-string router.config.ZO_META_CONNECTION_POOL_MIN_SIZE=5 \
+        --set-string router.config.ZO_META_CONNECTION_POOL_MAX_SIZE=50 \
+        --set-string ingester.config.ZO_META_CONNECTION_POOL_MIN_SIZE=5 \
+        --set-string ingester.config.ZO_META_CONNECTION_POOL_MAX_SIZE=50 \
+        --set-string querier.config.ZO_META_CONNECTION_POOL_MIN_SIZE=5 \
+        --set-string querier.config.ZO_META_CONNECTION_POOL_MAX_SIZE=50 \
+        --set-string compactor.config.ZO_META_CONNECTION_POOL_MIN_SIZE=5 \
+        --set-string compactor.config.ZO_META_CONNECTION_POOL_MAX_SIZE=50 \
+        --set-string alertmanager.config.ZO_META_CONNECTION_POOL_MIN_SIZE=5 \
+        --set-string alertmanager.config.ZO_META_CONNECTION_POOL_MAX_SIZE=50 \
         --set-string config.ZO_PROMETHEUS_ENABLE=true \
         --set probes.router.enabled=true \
         --set probes.router.config.startupProbe.initialDelaySeconds=30 \
@@ -7599,14 +7599,17 @@ write_files:
         --version "$OO_CHART_VERSION" \
         --reuse-values \
         --set-string image.oss.repository=public.ecr.aws/zinclabs/openobserve \
+        --set-string auth.ZO_META_POSTGRES_DSN="$OO_RW_DSN" \
+        --set-string auth.ZO_META_POSTGRES_RO_DSN="$OO_RW_DSN" \
+        --set-string auth.ZO_META_DDL_DSN="$OO_RW_DSN" \
         --set-string podSecurityContext.fsGroupChangePolicy=OnRootMismatch \
-        --set-string config.ZO_META_CONNECTION_POOL_MIN_SIZE=1 \
-        --set-string config.ZO_META_CONNECTION_POOL_MAX_SIZE=20 \
+        --set-string config.ZO_META_CONNECTION_POOL_MIN_SIZE=5 \
+        --set-string config.ZO_META_CONNECTION_POOL_MAX_SIZE=50 \
         --set-string config.ZO_NATS_V211_SUPPORT=true \
         --set-string extraEnv[0].name=ZO_META_CONNECTION_POOL_MIN_SIZE \
-        --set-string extraEnv[0].value=1 \
+        --set-string extraEnv[0].value=5 \
         --set-string extraEnv[1].name=ZO_META_CONNECTION_POOL_MAX_SIZE \
-        --set-string extraEnv[1].value=20 \
+        --set-string extraEnv[1].value=50 \
         --set-string scheduler.persistence.storageClass=longhorn \
         --set-string scheduler.persistence.size=25Gi \
         --set nats.promExporter.podMonitor.enabled=false \
@@ -7634,14 +7637,17 @@ write_files:
         --version "$OO_CHART_VERSION" \
         --reuse-values \
         --set-string image.oss.repository=public.ecr.aws/zinclabs/openobserve \
+        --set-string auth.ZO_META_POSTGRES_DSN="$OO_RW_DSN" \
+        --set-string auth.ZO_META_POSTGRES_RO_DSN="$OO_RW_DSN" \
+        --set-string auth.ZO_META_DDL_DSN="$OO_RW_DSN" \
         --set-string podSecurityContext.fsGroupChangePolicy=OnRootMismatch \
-        --set-string config.ZO_META_CONNECTION_POOL_MIN_SIZE=1 \
-        --set-string config.ZO_META_CONNECTION_POOL_MAX_SIZE=20 \
+        --set-string config.ZO_META_CONNECTION_POOL_MIN_SIZE=5 \
+        --set-string config.ZO_META_CONNECTION_POOL_MAX_SIZE=50 \
         --set-string config.ZO_NATS_V211_SUPPORT=true \
         --set-string extraEnv[0].name=ZO_META_CONNECTION_POOL_MIN_SIZE \
-        --set-string extraEnv[0].value=1 \
+        --set-string extraEnv[0].value=5 \
         --set-string extraEnv[1].name=ZO_META_CONNECTION_POOL_MAX_SIZE \
-        --set-string extraEnv[1].value=20 \
+        --set-string extraEnv[1].value=50 \
         --set-string scheduler.persistence.storageClass=longhorn \
         --set-string scheduler.persistence.size=25Gi \
         --set nats.promExporter.podMonitor.enabled=false \
